@@ -1,0 +1,70 @@
+####################################
+## StarCluster Configuration File ##
+####################################
+
+#I have removed many of the comments from this file
+#to ease readability, but I advise leaving the comments
+#in your actual config file.
+
+[global]
+DEFAULT_TEMPLATE = base
+
+#############################################
+## AWS Credentials and Connection Settings ##
+#############################################
+[aws info]
+AWS_ACCESS_KEY_ID = #INSERT ID
+AWS_SECRET_ACCESS_KEY = #INSERT KEY
+AWS_USER_ID= #INSERT ACCT NUMBER
+
+###########################
+## Defining EC2 Keypairs ##
+###########################
+
+[key aws_key]
+KEY_LOCATION=~/.ssh/aws_key.rsa
+
+
+################################
+## Defining Cluster Templates ##
+################################
+
+
+[cluster base]
+KEYNAME = aws_key
+CLUSTER_SIZE = 1
+CLUSTER_USER = john 
+CLUSTER_SHELL = bash
+NODE_IMAGE_ID = ami-999d49f0
+NODE_INSTANCE_TYPE = m1.xlarge
+VOLUMES = data
+PLUGINS = ipcluster 
+
+
+###########################################
+## Defining Additional Cluster Templates ##
+###########################################
+
+
+[cluster basecluster]
+EXTENDS = base
+CLUSTER_SIZE = 2
+
+
+#############################
+## Configuring EBS Volumes ##
+#############################
+
+[volume data]
+VOLUME_ID = #INSERT VOLUME ID
+MOUNT_PATH = /root/data/
+
+
+######################
+## Built-in Plugins ##
+######################
+
+[plugin ipcluster]
+SETUP_CLASS = starcluster.plugins.ipcluster.IPCluster
+ENABLE_NOTEBOOK = True
+
