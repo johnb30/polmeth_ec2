@@ -1,0 +1,598 @@
+% This is a LaTeX template for a submission to American Journal of Political Science
+% If you find any errors, please let me know: jjharden@unc.edu
+\documentclass[12pt, letterpaper]{article}
+ 
+%==============Packages & Commands=================
+\usepackage{graphicx} % Graphics
+\usepackage{indentfirst} % Tells LaTeX to indent every paragraph 
+\usepackage{setspace} % To set line spacing
+\usepackage[longnamesfirst]{natbib} % For references
+\usepackage{amsmath} % Some math symbols
+\usepackage[margin = 1in]{geometry}
+\usepackage{subfig}
+\usepackage{xcolor, listings}
+\usepackage{mdwlist}
+\usepackage{verbatim}
+\usepackage{hyperref}
+\usepackage{url}
+\urlstyle{same}
+\usepackage{multirow}
+\newcommand{\R}{\texttt{R}} % Write R in typewriter font
+\newcommand{\ntilde}{{\raise.17ex\hbox{$\scriptstyle\sim$}}}
+\bibpunct{(}{)}{;}{a}{}{,} % Reference punctuation 
+
+%============Article Title, Authors================
+\title{A Tutorial on Deploying and Using Amazon Elastic Cloud Compute Clusters}
+\author{John Beieler\\Pennsylvania State University\\jub270@psu.edu}
+
+%===================Startup========================
+\begin{document} 
+\maketitle 
+
+%================Begin Manuscript==================
+\newpage
+
+\section*{The Cloud and You} 
+
+With the datasets analyzed by Political Scientists growing ever larger and analysis
+becoming more complex, it is often necessary to utilize more powerful computing resources. 
+Research using large amounts of network data, event data, or textual data often
+pushes the limits of what an individual machine can accomplish in a reasonable period of time, if at
+all. The use of cloud resources allows tasks that take a large amount of time to be offloaded to a remote server in order to free up
+the user's local machine. Alternatively, for tasks larger than one computer can handle, one can divide and distribute a job across a cluster of servers. 
+While many universities offer high-performance computing resources, it is often the case that the user does not have
+free reign over what software is installed; it can take hours, days, or 
+even weeks to have a required piece of software installed by the server administrators. Additionally, jobs
+on university resources are typically restricted to a certain run length, such as
+24 hours. The use of a remote server that you rent, for as little as two cents per hour,
+enables whatever software is necessary to be installed when desired, and for jobs to be run as long as required.
+Amazon's Elastic Compute Cloud (EC2) environment provides access to these cloud resources
+for the rental of a server or cluster of servers. Amazon EC2 allows
+for the creation of a cluster with up to 20 machines, each with 
+multiple processing cores available. This is a large amount of computational power 
+available on demand and at relatively low cost. 
+ 
+While EC2 offers quick and straightforward rental of computing resources, setting up and managing the 
+servers comes with a rather steep learning curve. This article provides
+a brief introduction to the setup and use of EC2 resources. The focus is 
+on the use of the \texttt{Starcluster} utility for creating and managing EC2 
+clusters. Following this, I provide a 
+brief overview of using \texttt{R} and Python in parallel on a server cluster. Code and examples
+for the routines presented below are hosted on \href{https://github.com/johnb30/polmeth_ec2}{github}.
+
+\section*{Starcluster and EC2}
+
+Before starting an analysis on an EC2 server, it is necessary to follow a few
+steps to set up the server. There are two primary components of an EC2 server: the instance, which 
+refers to the hardware used, and the Amazon Machine Instance (AMI), which refers 
+to the software deployed on the machine such as the operating system and other 
+packages. In order to ease the deployment of an EC2 instance, \texttt{Starcluster}
+was developed by the \href{http://star.mit.edu/}{STAR program} at MIT.
+
+The following sections walk through the installation
+and configuration of \texttt{Starcluster}. This entails installation of \texttt{Starcluster}, 
+the creation of an Amazon Web Services (AWS) account, the creation of an Elastic Backed
+Stores (EBS) volume for the storage of user data, and finally the installation of software for 
+analysis, such as \R, and the attendant libraries and packages, such as \texttt{joblib} in Python
+and \texttt{snow} in \R. 
+
+\subsection*{Installing Starcluster}
+
+Since \texttt{Starcluster} is based on Python it is possible to easily install the utility using the \texttt{easy\_install}
+method.\footnote{This tutorial will assume the reader is working in a Unix-like
+environment such as Linux or OS X and has Python already installed. If on Windows, tutorials on installing Python and \texttt{easy\_install} 
+can be found  \href{http://www.python.org/getit/}{here} and \href{http://pypi.python.org/pypi/setuptools\#windows}{here}.}
+Unfortunately, \texttt{easy\_install} does not come prepackaged with a Python distribution.
+To install \texttt{easy\_install} in a Unix-like environment, download the 
+appropriate Python egg \href{http://pypi.python.org/pypi/setuptools#files}{from the Python Package Index}, 
+change into the directory that contains the egg, and run the shell script. Installing Starcluster requires the
+presence of a C compiler. On OS X, XCode must first be installed from the App Store. Within XCode, the command-line
+tools must be installed by selecting in the menubar \texttt{XCode -> Preferences -> Downloads} and installing the \texttt{Command 
+Line Tools}. On other Unix-like systems, if a C compiler
+is not already installed, one can be loaded using the package-management method used on that particular distribution.
+This will then allow the installation of \texttt{Starcluster} on the local machine.
+
+\begin{verbatim}
+  #Change to the directory where the egg was downloaded
+  cd ~/Downloads
+  #Execute the shell script
+  sh setuptools-0.6c11-py2.7.egg
+  #Install starcluster
+  sudo easy_install StarCluster
+\end{verbatim}
+
+\noindent
+Following the install, typing \texttt{starcluster help} into the command-line will bring up dialogue asking the 
+user to select an option for the configuration file. At this point type \texttt{2}, which will save the \texttt{config} 
+file in the \texttt{\ntilde/.starcluster} directory. The following section describes the information the \texttt{config}
+file should contain. 
+
+\subsection*{Configuring Starcluster}
+
+With \texttt{Starcluster} installed, it is necessary to set up the configuration file for \texttt{Starcluster}. There
+are two basic parts to the configuration file: user information and instance information. The following sections 
+provide guidance for adding the AWS user information to the \texttt{config} file, as well as adding the various 
+templates and other options necessary to create an EC2 instance. 
+
+\subsubsection*{Configuring User Information}
+
+All configuration options for \texttt{Starcluster} are found in the \texttt{config} 
+file located in the \texttt{\ntilde/.starcluster} directory. The 
+default \texttt{config} provided by \texttt{Starcluster} has numerous comments 
+and options. It is good to keep these in the file in order to see the available options, 
+but in the interest of clarity I have provided a cleaner \texttt{config} 
+with the configuration discussed in this article at the \href{https://github.com/johnb30/polmeth_ec2}{github link} provided earlier. 
+
+The first step to configuring \texttt{Starcluster} is to create an \href{https://aws.amazon.com/}{Amazon AWS} 
+account. Once an account is created, navigate to the ``Security Credentials" page, 
+which can be found in the drop-down menu entitled ``My Account/Console" at the top right corner of the
+page displayed immediately after login. Once on the ``Security 
+Credentials" page, in the ``Access Credentials" section there is the option to create a 
+personal access key. First create an access key, and then copy down the Access Key ID, the Secret Access 
+Key, and the Account Number, which can be found toward the top of the page 
+under the name used to register the account. This information should be placed in the \texttt{config} file 
+in the section entitled \texttt{AWS Credentials and Connection Settings}. To open and edit the \texttt{config}
+file, execute the following commands:\footnote{It might be useful at this junction to point out
+that the use of a ``programmer's" editor will likely be necessary. When working on a remote
+server it often is not possible, or is very difficult, to use a graphical editor. Text-based editors
+such as vim or emacs come preloaded on almost every instance of Linux available. They are 
+very powerful and useful, but come with a fairly steep learning curve.}
+
+\begin{verbatim}
+  cd ~/.starcluster
+  vim config
+  #Or depending on your editor preferences
+  emacs config
+  #On Mac, the following will open the config file in TextEdit
+  open config
+\end{verbatim}
+
+Next, a pair of SSH keys must be created. SSH stands for secure shell, and is a method for ``tunneling" securely
+from one computer to another. \texttt{Starcluster} uses SSH to allow to access to the EC2 instance.
+To create the key pair, execute the following commands:
+
+\begin{verbatim}
+  #If the ~/.ssh directory does not exist
+  mkdir ~/.ssh
+  starcluster createkey aws_key -o ~/.ssh/aws_key.rsa
+\end{verbatim}
+
+\noindent
+This will create a key in the \texttt{\ntilde/.ssh} directory on the local machine. This 
+information should then be added to the \texttt{config} file in the \texttt{Defining EC2 Keypairs}
+section. The updated section should read as follows:
+
+\begin{verbatim}
+[key aws_key]
+KEY_LOCATION=~/.ssh/aws_key.rsa
+\end{verbatim}
+
+The next step is to create an Elastic Backed Storage (EBS) volume in order to store data in a 
+persistent manner.\footnote{You can store data on the instance itself, but if you terminate the cluster the data
+is deleted. EBS storage allows you to terminate and restart clusters and keep the same data.} 
+In the AWS management console, which is accessed by clicking the ``My 
+Account/Console" link at the top of the page after logging in to AWS, 
+navigate to the EC2 section, followed by the ``EBS Volumes" page under ``My 
+Resources." Once on this page, create a new volume, with volume type of ``standard" and the 
+desired amount of storage\footnote{For the examples used in this article a small amount of storage is necessary; 5 GiB should suffice.}, 
+and copy down the Volume ID to add to the \texttt{Configuring EBS Volumes} section of the \texttt{config} file. For this 
+example, the EBS volume will be named \texttt{data} and will be mounted on the cluster at 
+\texttt{/root/data}. This gives the following configuration:
+
+\begin{verbatim}
+ [volume data] 
+ VOLUME_ID = #INSERT ID
+ MOUNT_PATH = /root/data/ 
+\end{verbatim}
+
+The final step is to uncomment, i.e., delete the ``\#" symbols around, the 
+\texttt{ipcluster} plugin, which is located roughly around line 280 in the plugins 
+section of the configuration file. After completing these steps the \texttt{config} 
+file is properly setup with the basic user and configuration information. The 
+next step is to define various server configurations that will be used.
+
+\subsubsection*{Configuring Cluster Templates}
+
+There are three primary components to the setup of a server: the AMI used, the 
+instance type, and the size. The individuals at the STAR program have generously 
+provided public AMIs that have many of the components necessary for scientific 
+research such as Python, OpenMPI, and the Sun Grid Engine, already present. The next section will 
+cover creating your own AMI as an alternative to using the STAR AMIs. 
+The second component necessary to create an EC2 instance is the instance type; Amazon offers 
+numerous instance types with varying 
+\href{https://aws.amazon.com/ec2/instance-types/}{configurations} and \href{https://aws.amazon.com/ec2 pricing/}{prices}.
+For the purposes of this tutorial, the 64-bit \texttt{Starcluster} AMI will be used on 
+the M1 Extra Large instance type. This leads to the following configuration, defined in the 
+\texttt{Defining Cluster Templates} section:
+
+\begin{verbatim}
+ [cluster base]
+ KEYNAME = aws_key
+ CLUSTER_SIZE = 1
+ CLUSTER_USER = john 
+ CLUSTER_SHELL = bash
+ NODE_IMAGE_ID = ami-999d49f0   
+ NODE_INSTANCE_TYPE = m1.xlarge
+ VOLUMES = data
+ PLUGINS = ipcluster
+\end{verbatim}
+
+While this setup is sufficient for many use cases, there are other situations that 
+might require more memory or more nodes in the cluster. \texttt{Starcluster} allows for 
+the definition of further templates in the \texttt{Defining Additional Cluster Templates}
+section. The following code defines a small cluster with the same basic characteristics as the \texttt{base}
+configuration, but starting two nodes instead of one. 
+
+\begin{verbatim}
+[cluster basecluster]
+EXTENDS = base
+CLUSTER_SIZE = 2
+\end{verbatim}
+
+The final step is to head back up to the beginning of the \texttt{config} file 
+and define the \texttt{DEFAULT\_TEMPLATE} as \texttt{base}.
+
+\subsubsection*{Using the Cluster}
+
+With all of the configuration options defined, the EC2 instance can finally be 
+spun up and used. The following code will start a server named ``mycluster" which 
+can then be accessed using SSH. The first attempt to SSH into a server will be met
+with a long message about unknown hosts. This is nothing to worry about; just type
+``yes" and hit return. 
+
+\begin{verbatim}
+  starcluster start mycluster
+  starcluster sshmaster mycluster
+\end{verbatim}
+
+\noindent
+Alternatively, a cluster following the \texttt{basecluster} configuration can be 
+started by running:\footnote{I advise against having multiple, different instances running at once. It is far too easy
+to forget how many are running, which can lead to a rather large (and unexpected) bill at the end of the month}
+
+\begin{verbatim}
+  starcluster start mycluster -c basecluster
+  starcluster sshmaster mycluster
+\end{verbatim}
+
+Users must issue the \texttt{starcluster terminate mycluster} 
+command to shut the EC2 instance down. \emph{It is important to note that if the instance is not
+explicitly terminated the instance will keep running and you will
+be charged for the uptime of the server.}
+Once connected to the cluster operation is the same as any Unix 
+command-line interface.\footnote{EC2 will close the connection if the session 
+does not receive any input. This means that if a job or script is running, but 
+nothing is typed into the terminal, EC2 will close the connection and the 
+progress on the job will be lost. Thus, it is often a good idea to split jobs 
+into \href{https://www.gnu.org/software/screen/}{GNU Screen} sessions. This is done by typing \texttt{screen -S 
+analysis}, which will create a screen session named \texttt{analysis}. To exit from a 
+screen session simply use the command \texttt{Ctrl-a-d}, which indicates that the control key should be held 
+down while pressing a then d. Then the screen session can be resumed 
+using \texttt{screen -r analysis}.} In order to exit the server and terminate the instance,
+the following commands are used:
+
+\begin{verbatim}
+  #This will exit the EC2 instance and returns to the local machine
+  exit
+
+  starcluster terminate mycluster
+\end{verbatim}
+
+\subsubsection*{Adding Software and Creating AMIs}
+
+Creating a custom AMI is optional for the use of an EC2 instance. If one desires, software and packages 
+can be loaded to the instance each time it is started. Having an AMI with all of the software pre-loaded, however, can save a 
+large amount of time and repetitive action. In addition, having this AMI created will ensure that the same software is
+installed on all nodes within a cluster. Thus, the following example shows how to load the libraries and 
+software needed for the rest of this tutorial, such as \texttt{R} and various Python packages, 
+and how to create an AMI that will allow this same software configuration to be loaded repeatedly. This section assumes
+that the reader wishes to create a custom AMI to be reused. If not, the commands used to install software should be issued
+on the instance used to run analyses. The following commands start a special type of EC2 instance 
+configured for the creation of AMIs and SSHs into the instance as usual. 
+
+\begin{verbatim}
+  starcluster start -o -s 1 -i m1.xlarge -n ami-999d49f0 imagehost
+  starcluster sshmaster imagehost
+\end{verbatim}
+
+\noindent
+The AMI that the custom AMI is built upon runs on the operating system Ubuntu, which is a specific distribution of Linux.
+Ubuntu uses the command \texttt{apt-get install} to install programs.\footnote{Reference is often seen to \texttt{sudo apt-get
+install}; the presence of \texttt{sudo} tells the machine to run the following command as the root user. This addition is
+unnecessary in this situation since the user is logged in to the instance as the root user already.}
+Before installing packages, however, it is necessary to tell Ubuntu to look in a different location for the newest version of \R. 
+In the file \texttt{/etc/apt/sources.list} add the line \texttt{deb http://cran.mtu.edu/bin/linux/ubuntu oneiric/}. This will allow 
+the newest version of \texttt{R} to be installed instead of version 2.13, which is usually installed by using \texttt{apt-get}.
+
+\begin{verbatim}  
+  apt-get update
+  apt-get install r-base-core
+  
+  easy_install pip
+  pip install pandas
+  pip install joblib
+  
+  R
+\end{verbatim}
+
+\noindent
+Once inside the \texttt{R} session, it is necessary to install several packages that will be of use later when performing analyses in parallel. 
+The specific packages used are \texttt{foreach} \citep{foreach}, \texttt{doParallel} \citep{doParallel}, \texttt{snow} \citep{snow},
+and \texttt{doSNOW} \citep{doSNOW}. After these packages are installed, \texttt{R} can be exited, as can the instance itself. 
+
+\begin{verbatim}
+  install.packages('foreach')
+  install.packages('doParallel')
+  install.packages('snow')
+  install.packages('doSNOW')
+  q()
+  
+  exit
+\end{verbatim}
+
+Now back at the local machine's command line, it is time to create the custom AMI. Executing the following code will
+create an AMI with a unique AMI ID that can be placed in the \texttt{config} file in place of the STAR
+AMI that is currently in use. In other words, the new AMI ID would replace \texttt{ami-999d49f0} in the configuration.
+
+\begin{verbatim}  
+  #Note instance ID
+  starcluster listinstances 
+  starcluster ebsimage <INSTANCE-ID> analysis-image 
+  #Note the new AMI ID that prints out 
+  
+  starcluster terminate imagehost
+\end{verbatim}
+
+\section*{Performing Analyses on a Cluster}
+
+The server has now been configured and \texttt{R}, along with other libraries and packages,
+has been installed. At this point \texttt{R} can be used as it is on any other machine, but with the
+potential for much more computational power. The features of EC2 can be utilized for
+either cluster or multicore processing, depending on the problem. 
+One potential situation that can arise when analyzing big data is that a long job needs to be offloaded onto a remote server.
+In this situation multicore processing, which is the use of multiple cores
+on a single CPU within the machine, may be advantageous. If a specific task
+is too large for a single machine to handle, due to issues such as RAM limitations, 
+cluster computation, or using multiple machines to perform the computations, may be warranted.
+It is important to note that the use of a cluster is not
+always necessary; sometimes a machine with a large amount of RAM is sufficient
+for the task and will allow for greater simplicity \citep{hadoop}. The various instance
+types available on EC2 allow for the selection of the proper setup for either 
+situation. 
+
+Given these two different environments, multicore or cluster, different steps are required
+depending on which is utilized for a given task.\footnote{An added level of complexity not covered is the 
+combination of cluster and multicore computing. In short, one can create a job that shares work amongst nodes
+on a cluster, which is then further divided amongst multiple cores. To achieve this, one must
+simply combine the two different sets of code outlined in the multicore and cluster sections below.}
+This section focuses on ``embarrassingly parallel" situations of the type commonly encountered in basic
+data cleaning, data subsetting, or data simulations, e.g. Monte Carlo simulations. I define ``embarrassingly parallel" 
+problems as those that can commonly be approached using a for-loop in a 
+computer program. The running example used is a function that  
+generates 100 draws from the uniform distribution 100 times, which
+are then transformed to the exponential distribution from which a mean is 
+calculated. This function is then called 100 times.\footnote{This is an admittedly trivial example, 
+but it shows the basics of how a Monte Carlo simulation might proceed in a cluster or multicore 
+environment.}
+
+\subsection*{Using R on EC2}
+
+\subsubsection*{Multicore}
+
+The following example makes use of the \texttt{foreach} library in \R. The additions needed 
+to run code in parallel in a multicore setting are to register a parallel backend, using \texttt{makeCluster()}
+and \texttt{registerDoParallel}, and
+the addition of \texttt{\%dopar\%} instead of \texttt{\%do\%} before the function being used, which will
+call the function in parallel instead of sequentially. In \texttt{R},
+
+\lstset{language=R, keywordstyle=\color{blue}\bfseries}
+\begin{lstlisting} 
+library(foreach)
+library(doParallel)
+
+cl = makeCluster(3)
+registerDoParallel(cl)
+
+unif.trans = function(){
+    results = matrix(nrow=100,ncol=100)
+    for(i in 1:100){
+    results[i,] = runif(100) 
+    exponential = -log(results)
+    }
+    return(mean(exponential))
+  }
+
+x = foreach(i=1:100, .combine='c') %dopar% unif.trans()
+mean(x)
+   
+\end{lstlisting}
+
+\subsubsection*{Cluster}
+
+Performing analysis utilizing a cluster of computers uses a similar approach, but requires some communication between
+the various nodes within the cluster. \texttt{R} has some packages, such as \texttt{snow} and \texttt{snowfall}, that assist
+in this. The first step is to create a cluster with more than one node in it, such as defined by the 
+\texttt{basecluster} template. The following code assumes that any other instances named \texttt{mycluster} have been
+terminated. Additionally, the following should be executed on the user's local machine in order to create the new
+EC2 instance. 
+
+\begin{verbatim}
+  starcluster start mycluster -c basecluster
+  #Note the IP Address of the instances in the cluster
+  starcluster listclusters
+\end{verbatim}
+
+The approach for analysis on a cluster environment is extremely similar to that for a multicore environment; the main
+difference lies in how the parallel backend is created. For the cluster setting, it is necessary to specify the IP addresses 
+of the nodes included in the cluster. 
+
+\lstset{language=R, keywordstyle=\color{blue}\bfseries}
+\begin{lstlisting}
+library(snow)
+library(doSNOW)
+library(foreach)
+
+#Replace MASTER and NODE001 with the appropriate IP Address
+cl = makeCluster(c('MASTER.compute-1.amazonaws.com', 
+'NODE001.compute-1.amazonaws.com'), type='SOCK')
+registerDoSNOW(cl)
+
+unif.trans = function(){
+    results = matrix(nrow=100,ncol=100)
+    for(i in 1:100){
+    results[i,] = runif(100) 
+    exponential = -log(results)
+    }
+    return(mean(exponential))
+  }
+
+x = foreach(i=1:100, .combine='c') %dopar% unif.trans()
+mean(x)
+
+\end{lstlisting}
+
+\noindent
+\texttt{snow} also comes packaged with parallel and cluster versions of the \texttt{apply} family of functions.
+A more detailed discussion of these can be found in the
+\href{http://cran.r-project.org/web/packages/snow/snow.pdf}{\texttt{snow} documentation}. 
+
+\subsection*{Using Python on EC2}
+
+\subsubsection*{Multicore}
+
+The easiest approach for implementing embarrassingly parallel for-loops in a 
+multicore situation in Python is the \texttt{Parallel} functionality of the 
+\href{http://packages.python.org/joblib/}{\texttt{joblib}} package. The code below 
+illustrates the use of \texttt{joblib} in the same toy simulation 
+used in the \texttt{R} examples. The heart of the code below is the call to the 
+\texttt{Parallel} function. The \texttt{n\_jobs} argument tells the function
+how many cores to use; -1 indicates the use of all available cores. The
+\texttt{uniform\_trans} function is then called 100 times, with these
+100 calls split across all available cores. 
+
+
+\begin{verbatim}
+starcluster sshmaster mycluster
+ipython
+\end{verbatim}
+
+\lstset{language=Python, keywordstyle=\color{blue}\bfseries}
+\begin{lstlisting}
+from joblib import Parallel, delayed
+import numpy as np
+import scipy.stats as stats
+
+def uniform_trans():
+    results = list()
+    for i in xrange(100):
+        results.append(stats.uniform.rvs(size=100))
+    results = np.asarray(results)
+    exponential = -np.log(results)
+    return np.mean(exponential)
+    
+means = Parallel(n_jobs=-1)(delayed(uniform_trans)() 
+            for _ in xrange(100))
+finalMean = np.mean(means)
+
+\end{lstlisting}
+
+\subsubsection*{Cluster}
+
+For analysis on a cluster using Python, the developers of \texttt{Starcluster} 
+had the foresight to include the IPython \citep{ipython} cluster plugin. This allows 
+analysis to be easily forked to different nodes within a server. The main 
+difference is that it is necessary to login to the EC2 instance with a different 
+user than root, hence why the user \texttt{john} was defined in the \texttt{config} 
+above. The basic functioning of the below code is to create a \texttt{Client} object, 
+which contains the information about the available nodes in the cluster. The \texttt{nodes}
+object is then assigned all possible worker nodes. The asynchronous map function is then used
+to split the code between the nodes and collect the results in an asynchronous 
+manner.\footnote{Further explanation of \texttt{map\_async} is located in the 
+\href{http://ipython.org/ipython-doc/stable/parallel/parallel\_multiengine.html\#non-locking-execution}{IPython Documentation}.}
+A final point of interest is that since the function is being sent to various worker nodes, 
+it is necessary to import the appropriate packages within the function itself. 
+
+\begin{verbatim}
+starcluster sshmaster mycluster -u john
+ipython
+\end{verbatim}
+
+\lstset{language=Python, keywordstyle=\color{blue}\bfseries}
+\begin{lstlisting}
+from IPython.parallel import Client
+import numpy as np
+
+cluster = Client(packer='pickle')
+nodes = cluster[:]
+
+def uniform_transform(z):
+    import scipy.stats as stats
+    import numpy as np
+    results = list()
+    for i in xrange(100):
+        results.append(stats.uniform.rvs(size=100))
+    results = np.asarray(results)
+    exponential = -np.log(results)
+    return np.mean(exponential)
+
+gather = nodes.map_async(uniform_transform, xrange(100))
+means = gather.get()
+mean = np.mean(means)
+
+\end{lstlisting}
+
+\section*{Resources and Final Thoughts}
+
+While this article serves as an extremely brief introduction, there are 
+many resources available for exploring parallel computation in \texttt{R} and Python 
+in greater depth. Before explicating these resources, however, a final note 
+on using parallel processing is in order. For small 
+examples like the one used in this article, it is sometimes \emph{slower} to run 
+the process in parallel due to the scheduling and recombining of results. It is 
+important to identify the bottleneck in your workflow. If you are trying to fit a 
+model to a large amount of data and hitting memory limits, it is likely easier 
+to use the high memory EC2 instance with 68 GiB of memory.\footnote{In fact, 
+as I was writing this I received an email from Amazon announcing new types
+of instances that have 244 GiB of RAM and two Intel Xeon processors, which
+each have 8 cores for 16 total physical cores and 32 total threads. In reality 
+this instance should be more than enough firepower for nearly any application
+that could arise in political science research.} 
+On the other hand, if your data subsetting script is taking an hour or more to run, a cluster or multicore solution might be 
+useful. In addition, some problems are not easily parallelized while others are 
+not parallelizable at all. The type of algorithms that are easily parallelized, however,
+ could serve as the subject of an entirely different article.\footnote{In short, if an algorithm contains the summation of results it is probably 
+ possible to run it in parallel.} 
+ 
+With that said, if multicore or cluster computing is the best way forward for 
+a given problem there has been a copious amount of (digital) ink spilled 
+outlining the various options available for parallel computation in both \texttt{R} and 
+Python. In \texttt{R} there are the \texttt{foreach}, \texttt{snow}, and \texttt{snowfall} 
+packages discussed in this article, in addition to the various implementations of 
+\texttt{apply}.\footnote{A good resource for a high level overview
+for some of these commands is Ryan Rosario's presentation on parallelizing R, available  
+\href{http://www.slideshare.net/bytemining/taking-r-to-the-limit-high-performance-computing-in-r-part-1-parallelization-la-r-users-group-727}
+{here}.} 
+There are also explicit implementations of MPI in \texttt{R} such as Rmpi, a good example of which, 
+along with a less trivial usage of parallel processing
+than presented in this article, can be seen \href{http://math.acadiau.ca/ACMMaC/Rmpi/examples.html}{here}. 
+In Python, MPI is also available, as is the 
+\texttt{multithread} package. The easiest and most straightforward approach, 
+however, is to make use of IPython and \texttt{joblib}. These two should cover 
+almost any imaginable scenario. With this in mind, the aim of this article was not to provide an 
+exhaustive tutorial on parallel computation; in reality this would devolve into 
+a repetition of the documentation for the various implementations mentioned 
+above. Rather, the hope is that this article has provided the reader with
+a working understanding of, and a quick-start guide for, 1) initiating 
+and running an AWS EC2 instance and 2) utilizing an EC2 
+instance for the purposes of parallel computing in \texttt{R} and Python. 
+ 
+
+
+
+%===================References=====================
+\newpage
+\bibliographystyle{apsr}
+\bibliography{ec2}
+
+%===================End Document===================
+\end{document}
