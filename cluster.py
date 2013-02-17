@@ -7,13 +7,13 @@ nodes = cluster[:]
 def uniform_transform(z):
     import scipy.stats as stats
     import numpy as np
-    sample = list()
-    for i in xrange(1000):
-        sample.append(stats.uniform.rvs(size=1000))
-    sample = np.asarray(sample)
-    exponential = -np.log(sample)
+    results = list()
+    for i in xrange(100):
+        results.append(stats.uniform.rvs(size=100))
+    results = np.asarray(results)
+    exponential = -np.log(results)
     return np.mean(exponential)
 
-results = nodes.map_async(uniform_transform, xrange(1000))
-means = results.get()
+gather = nodes.map_async(uniform_transform, xrange(100))
+means = gather.get()
 mean = np.mean(means)
